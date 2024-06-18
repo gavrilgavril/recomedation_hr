@@ -32,7 +32,7 @@ def run_model():
     infernce_model=Recomedation()
     post_data(infernce_model.get_model_recomendation_all())
 
-ß
+
 class Recomedation:
     def __init__(self):
         self.queryes=pd.read_pickle('src/feature.pkl')
