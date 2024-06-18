@@ -30,10 +30,9 @@ def run_model():
     download_data()
     download_configs()
     infernce_model=Recomedation()
-    print(2222222222112222)
     post_data(infernce_model.get_model_recomendation_all())
 
-
+ß
 class Recomedation:
     def __init__(self):
         self.queryes=pd.read_pickle('src/feature.pkl')
