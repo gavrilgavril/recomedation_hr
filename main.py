@@ -8,24 +8,47 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 import json
-url_=os.environ['URL_COURSES']
-print(url_)
-
+import sys
+url_courses=os.environ['URL_COURSES']
+url_configs=os.environ['URL_CONFIGS']
+url_post=os.environ['URL_POST']
+import logging
+logger = logging.getLogger(__name__)
 def download_data():
-    r= requests.get(url_)
-    z = zipfile.ZipFile(io.BytesIO(r.content))
-    z.extractall("data/")
-
+    logger.warning("Загружаю данные о курсах")
+    r= requests.get(url_courses)
+    if r.status_code == 200:
+        logger.warning("===> Данных о курсах успешно загружены")
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        z.extractall("data/")
+    else:
+        logger.warning("===> Загрузите данные о курсах на портал")
+        sys.exit()
 def download_configs():
-    r= requests.get(os.environ['URL_CONFIGS'])
-    z = zipfile.ZipFile(io.BytesIO(r.content))
-    z.extractall("configs/")
+    logger.info("Загружаю файлы конфигурации")
+    r= requests.get(url_configs)
+    if r.status_code == 200:
+        logger.warning("===> Файлы конфигурации успешно загружены")
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        z.extractall("configs/")
+       
+    else:
+        logger.warning("===> Загрузите данные о конфирации на портал")
+        sys.exit()
+
 def post_data(data):
-    url =os.environ['URL_POST']
-    requests.post(url, data=json.dumps(data), headers={
+    r= requests.post(url_post, data=json.dumps(data), headers={
     'Content-type':'application/json', 
     'Accept':'application/json'})
+    if r.status_code == 200:
+         logger.warning("===> Данных о рекомендация загружены на портал")
+    else:
+        logger.warning("===> Не удалось загрузить рекомендации на портал:")
+        logger.warning(r.json()["message"])
+        sys.exit()    
 
+
+    
 def run_model():
     download_data()
     download_configs()
@@ -40,15 +63,16 @@ class Recomedation:
         self.courses=self.download_data('data/courses')
         self.dict_profeesional_roles=self.download_data('configs/dict_profeesional_roles')
         self.dict_level_position=self.download_data('configs/dict_level_position')
+        self.memory=pd.read_pickle('src/memory.pkl')
     def download_data(self,cname: str):
         return pd.read_csv(cname+'.csv', sep=';',encoding='IBM866')
     def download_pkl(self,cname: str):
         return pd.read_pickle(cname+'.pkl')
     def make_query(self,profession,level):
         if profession in self.queryes.professia.unique():
-            exp =self.queryes[(self.queryes.professia==profession) & (self.queryes.level==level)].exp.values[0]
+            #exp =self.queryes[(self.queryes.professia==profession) & (self.queryes.level==level)].exp.values[0]
             skill_set = self.queryes[(self.queryes.professia==profession) & (self.queryes.level==level)].skill_set.values[0]
-            query=' '.join(exp.split('|')).replace(',',' ')+ ' '.join(skill_set.split('|'))
+            query=' '.join(skill_set.split('|'))
             return query
         else:
             return profession
@@ -62,15 +86,30 @@ class Recomedation:
         return similar_value_a1.tolist()[0]  
     def get_model_recomendation_by_level_position(self,profession,level):
         query=self.make_query(profession,level)  
-        return self.infrence_model(query)  
+        return self.infrence_model(query)     
     def  get_model_recomendation_all(self):
         res_list=[]
+        tmp=self.courses[:].copy()
         for i,row in self.dict_level_position[:].iterrows():
-            tmp=self.courses[:].copy()
-            tmp['est']=self.get_model_recomendation_by_level_position(row.profession_role,row.level)
+            splt=str(row.profession_role)+'|'+str(row.level)
+            if splt in self.memory.iloc[:, 17: ].columns:
+                logger.warning(f"{splt} - Предраcчитано ранее ==>достаю из памяти  \n")
+                tmp['est']=self.memory[splt]               
+            else: 
+                logger.warning(f" Рассчитваю рекомендации для {splt} \n")
+
+                tmp['est']=self.get_model_recomendation_by_level_position(row.profession_role,row.level)
             res_dict={"type":"career","subjectArea":row.profession_role,"level": row.level, 
-            "courses":tmp.sort_values(by='est',ascending=0)['ID курса'].values[:30].tolist()}
+                "courses":tmp.sort_values(by='est',ascending=0)['ID курса'].values[:30].tolist()}
             res_list.append(res_dict)
-        return res_list     
+        logger.warning(res_list)
+        return res_list
 if __name__ == "__main__":   
-    run_model()
+    logging.basicConfig(format='%(levelname)s:%(asctime)s %(funcName)s - %(message)s', level=logging.INFO,
+                        filename="src/log.txt")
+    try:
+        logger.warning("SCRIPT STARTED")
+        run_model()
+        logger.warning("SCRIPT FINISHED SUCCESSFULLY")
+    except Exception as e:
+        logger.critical(e, exc_info=True)
